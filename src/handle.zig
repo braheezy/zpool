@@ -73,12 +73,9 @@ pub fn Handle(
         const HandleType = Self;
         const IndexType = UInt(index_bits);
         const CycleType = UInt(cycle_bits);
-        const HandleUnion = extern union {
-            id: Id,
-            bits: packed struct {
-                cycle: CycleType, // least significant bits
-                index: IndexType, // most significant bits
-            },
+        const HandleBits = packed struct {
+            cycle: CycleType, // least significant bits
+            index: IndexType, // most significant bits
         };
 
         pub const Resource = TResource;
@@ -95,31 +92,31 @@ pub fn Handle(
         pub const nil = Self{ .id = 0 };
 
         pub fn init(i: IndexType, c: CycleType) Self {
-            const u = HandleUnion{ .bits = .{
+            const bits = HandleBits{
                 .cycle = c,
                 .index = i,
-            } };
-            return .{ .id = u.id };
+            };
+            return .{ .id = @bitCast(bits) };
         }
 
         pub fn cycle(self: Self) CycleType {
-            const u = HandleUnion{ .id = self.id };
-            return u.bits.cycle;
+            const bits: HandleBits = @bitCast(self.id);
+            return bits.cycle;
         }
 
         pub fn index(self: Self) IndexType {
-            const u = HandleUnion{ .id = self.id };
-            return u.bits.index;
+            const bits: HandleBits = @bitCast(self.id);
+            return bits.index;
         }
 
         /// Unpacks the `index` and `cycle` bit fields that comprise
         /// `Handle.id` into an `AddressableHandle`, which stores
         /// the `index` and `cycle` values in pointer-addressable fields.
         pub fn addressable(self: Self) AddressableHandle {
-            const u = HandleUnion{ .id = self.id };
+            const bits: HandleBits = @bitCast(self.id);
             return .{
-                .cycle = u.bits.cycle,
-                .index = u.bits.index,
+                .cycle = bits.cycle,
+                .index = bits.index,
             };
         }
 
@@ -134,15 +131,15 @@ pub fn Handle(
 
             /// Returns the corresponding `Handle`
             pub fn handle(self: AddressableHandle) HandleType {
-                const u = HandleUnion{ .bits = .{
+                const bits = HandleBits{
                     .cycle = @as(CycleType, @intCast(self.cycle)),
                     .index = @as(IndexType, @intCast(self.index)),
-                } };
-                return .{ .id = u.id };
+                };
+                return .{ .id = @bitCast(bits) };
             }
         };
 
-        pub fn format(self: Self, writer: *std.io.Writer) std.io.Writer.Error!void {
+        pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             const n = @typeName(Resource);
             const a = self.addressable();
             return writer.print("{s}[{}#{}]", .{ n, a.index, a.cycle });

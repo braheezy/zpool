@@ -108,12 +108,50 @@ pub fn Pool(
             @"Pool._curr_cycle": AddressableCycle,
         });
 
-        const Storage = MultiArrayList(@Type(.{ .@"struct" = .{
-            .layout = .auto,
-            .fields = private_fields ++ column_fields,
-            .decls = &.{},
-            .is_tuple = false,
-        } }));
+        const Storage = blk: {
+            const field_count = private_fields.len + column_fields.len;
+            var field_names: [field_count][]const u8 = undefined;
+            var field_types: [field_count]type = undefined;
+            var field_attrs: [field_count]std.builtin.Type.StructField.Attributes = undefined;
+
+            for (
+                private_fields,
+                field_names[0..private_fields.len],
+                field_types[0..private_fields.len],
+                field_attrs[0..private_fields.len],
+            ) |field, *name, *Type, *attrs| {
+                name.* = field.name;
+                Type.* = field.type;
+                attrs.* = .{
+                    .@"comptime" = field.is_comptime,
+                    .@"align" = field.alignment,
+                    .default_value_ptr = field.default_value_ptr,
+                };
+            }
+
+            for (
+                column_fields,
+                field_names[private_fields.len..][0..column_fields.len],
+                field_types[private_fields.len..][0..column_fields.len],
+                field_attrs[private_fields.len..][0..column_fields.len],
+            ) |field, *name, *Type, *attrs| {
+                name.* = field.name;
+                Type.* = field.type;
+                attrs.* = .{
+                    .@"comptime" = field.is_comptime,
+                    .@"align" = field.alignment,
+                    .default_value_ptr = field.default_value_ptr,
+                };
+            }
+
+            break :blk MultiArrayList(@Struct(
+                .auto,
+                null,
+                &field_names,
+                &field_types,
+                &field_attrs,
+            ));
+        };
 
         const FreeQueue = RingQueue(AddressableIndex);
 
@@ -565,11 +603,11 @@ pub fn Pool(
             handle: AddressableHandle,
         ) HandleError!void {
             if (isFreeCycle(handle.cycle))
-                return Error.HandleIsUnacquired;
+                return HandleError.HandleIsUnacquired;
             if (handle.index >= self._curr_cycle.len)
-                return Error.HandleIsOutOfBounds;
+                return HandleError.HandleIsOutOfBounds;
             if (handle.cycle != self._curr_cycle[handle.index])
-                return Error.HandleIsReleased;
+                return HandleError.HandleIsReleased;
         }
 
         fn acquireAddressableHandle(self: *Self) !AddressableHandle {
