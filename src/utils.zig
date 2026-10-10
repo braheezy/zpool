@@ -49,35 +49,28 @@ pub fn AddressableUInt(comptime min_bits: u8) type {
 /// Returns: `StructOfSlices = struct { foo: []u32, bar: []u64 }`
 pub fn StructOfSlices(comptime Struct: type) type {
     // same number of fields in the new struct
-    const struct_fields = @typeInfo(Struct).@"struct".fields;
-    var field_names: [struct_fields.len][]const u8 = undefined;
-    var field_types: [struct_fields.len]type = undefined;
+    const info = @typeInfo(Struct).@"struct";
+    var field_types: [info.field_names.len]type = undefined;
 
-    inline for (
-        struct_fields,
-        field_names[0..struct_fields.len],
-        field_types[0..struct_fields.len],
-    ) |field, *name, *Type| {
+    inline for (info.field_types, info.field_attrs, &field_types) |element_type, attrs, *Type| {
         // u32 -> []u32
-        const element_type = field.type;
 
         const FieldType = @Pointer(
             .slice,
             .{
-                .@"align" = field.alignment,
+                .@"align" = attrs.@"align",
             },
             element_type,
             null,
         );
 
-        name.* = field.name;
         Type.* = FieldType;
     }
 
     return @Struct(
         .auto,
         null,
-        &field_names,
+        info.field_names,
         &field_types,
         &@splat(.{}),
     );
@@ -91,4 +84,14 @@ test "StructOfSlices" {
 
     const SOS = StructOfSlices(Struct);
     try expectEqual(@sizeOf([]u16) * 3, @sizeOf(SOS));
+}
+
+test "StructOfSlices preserves field types and explicit alignment" {
+    const Struct = struct { byte: u8, wide: u64 align(16), flag: bool };
+    const SOS = StructOfSlices(Struct);
+
+    try std.testing.expectEqual([]u8, @FieldType(SOS, "byte"));
+    try std.testing.expectEqual([]align(16) u64, @FieldType(SOS, "wide"));
+    try std.testing.expectEqual([]bool, @FieldType(SOS, "flag"));
+    try std.testing.expectEqual(0, @typeInfo(StructOfSlices(struct {})).@"struct".field_names.len);
 }
